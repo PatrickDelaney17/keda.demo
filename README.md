@@ -108,22 +108,29 @@ apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: blob-storage-scaler
-  namespace: default
+  labels:
+    app: copy-files-app
 spec:
   scaleTargetRef:
     name: copy-files-app
+  minReplicaCount: 0 # Start with 0 replicas
+  maxReplicaCount: 10 # Set the maximum number of pods
+  cooldownPeriod: 300  # How long KEDA waits before scaling down
+  pollingInterval: 30  # How often KEDA checks the blob storage for new files
   triggers:
   - type: azure-blob
     metadata:
-      connectionFromEnv: connection-string
+      connectionFromEnv: AZURE_STORAGE_CONNECTION_STRING
       containerName: container-1
-      blobCount: "2"  # Scale when there are at least 2 blobs
+      blobCount: "5"  # Target metric value for scaling (sets one pod per 5 files)
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: copy-files-app
-  namespace: default
+  labels:
+    app: copy-files-app
+  # No need for namespace field here
 spec:
   replicas: 0  # Start with 0 replicas
   selector:
@@ -138,36 +145,23 @@ spec:
       - name: copy-files
         image: your-docker-repo/copy-files:latest
         env:
-        - name: connection-string
+        - name: AZURE_STORAGE_CONNECTION_STRING
           valueFrom:
             secretKeyRef:
-              name: azure-blob-connection-string
-              key: connection-string
-
+              name: azure-blob-secrets
+              key: AZURE_STORAGE_CONNECTION_STRING
+        - name: SOURCE_CONTAINER
+          valueFrom:
+            secretKeyRef:
+              name: azure-blob-secrets
+              key: SOURCE_CONTAINER
+        - name: DESTINATION_CONTAINER
+          valueFrom:
+            secretKeyRef:
+              name: azure-blob-secrets
+              key: DESTINATION_CONTAINER
 ```
 
-
-```
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: blob-storage-scaler
-  namespace: default
-spec:
-  scaleTargetRef:
-    name: copy-files-app
-  minReplicaCount: 0  # Start with 0 replicas
-  maxReplicaCount: 10 # Set the maximum number of pods
-  cooldownPeriod: 300  # Optional: Wait 5 minutes before scaling down
-  pollingInterval: 30   # KEDA checks every 30 seconds
-  triggers:
-  - type: azure-blob
-    metadata:
-      connectionFromEnv: connection-string
-      containerName: container-1
-      blobCount: "2"  # Scale when there are at least 2 blobs
-
-```
 
 
 ### You can monitor the scaling behavior with:
