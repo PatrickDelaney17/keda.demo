@@ -1,0 +1,57 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: blob-storage-scaler
+  labels:
+    app: copy-files-app
+spec:
+  scaleTargetRef:
+    name: copy-files-app
+  minReplicaCount: 0 # Start with 0 replicas
+  maxReplicaCount: 10 # Set the maximum number of pods
+  cooldownPeriod: 300  # How long KEDA waits before scaling down
+  pollingInterval: 30  # How often KEDA checks the blob storage for new files
+  triggers:
+  - type: azure-blob
+    metadata:
+      connectionFromEnv: AZURE_STORAGE_CONNECTION_STRING
+      containerName: container-1
+      blobCount: "5"  # Target metric value for scaling (sets one pod per 5 files)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copy-files-app
+  labels:
+    app: copy-files-app
+  # No need for namespace field here
+spec:
+  replicas: 0  # Start with 0 replicas
+  selector:
+    matchLabels:
+      app: copy-files-app
+  template:
+    metadata:
+      labels:
+        app: copy-files-app
+    spec:
+      containers:
+      - name: copy-files
+        image: your-docker-repo/copy-files:latest
+        env:
+        - name: AZURE_STORAGE_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: azure-blob-secrets
+              key: AZURE_STORAGE_CONNECTION_STRING
+        - name: SOURCE_CONTAINER
+          valueFrom:
+            secretKeyRef:
+              name: azure-blob-secrets
+              key: SOURCE_CONTAINER
+        - name: DESTINATION_CONTAINER
+          valueFrom:
+            secretKeyRef:
+              name: azure-blob-secrets
+              key: DESTINATION_CONTAINER
