@@ -5,7 +5,7 @@ basic test and learn project for using KEDA on k3s
 
 # Steps
 
-## Install KEDA on Your k3s Cluster
+## Install KEDA on Your Cluster
 
 ### Add the KEDA Helm Repository:
 ```sh
@@ -128,6 +128,20 @@ spec:
       connectionFromEnv: AZURE_STORAGE_CONNECTION_STRING
       containerName: container-1
       blobCount: "5"  # Target metric value for scaling (sets one pod per 5 files)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: copy-files-app-service
+  namespace: default
+spec:
+  selector:
+    app: copy-files-app
+  ports:
+  - protocol: TCP
+    port: 80   
+    targetPort: 5000 
+  type: ClusterIP  
 ---
 apiVersion: apps/v1
 kind: Deployment

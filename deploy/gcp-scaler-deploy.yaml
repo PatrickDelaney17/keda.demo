@@ -19,6 +19,20 @@ spec:
       activationTargetObjectCount: "2"  # Start scaling when there are at least 2 files
       bucketPrefix: "source/"  # Monitor files specifically in the "source/" folder
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gcp-copy-files-service
+  namespace: default
+spec:
+  selector:
+    app: gcp-copy-files-app
+  ports:
+  - protocol: TCP
+    port: 80   
+    targetPort: 5000 
+  type: ClusterIP  
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,7 +49,7 @@ spec:
     spec:
       containers:
       - name: copy-files
-        image: your-docker-repo/copy-files:latest
+        image: delaneyp17/keda-test:latest
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /etc/secrets/service-account.json

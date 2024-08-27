@@ -17,7 +17,20 @@ spec:
       connectionFromEnv: AZURE_STORAGE_CONNECTION_STRING
       containerName: container-1
       blobCount: "5"  # Target metric value for scaling (sets one pod per 5 files)
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: copy-files-app-service
+  namespace: default
+spec:
+  selector:
+    app: copy-files-app
+  ports:
+  - protocol: TCP
+    port: 80   
+    targetPort: 5000 
+  type: ClusterIP  
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -38,7 +51,7 @@ spec:
     spec:
       containers:
       - name: copy-files
-        image: your-docker-repo/copy-files:latest
+        image: delaneyp17/keda-test:latest
         env:
         - name: AZURE_STORAGE_CONNECTION_STRING
           valueFrom:
