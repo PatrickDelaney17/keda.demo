@@ -1,0 +1,60 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: gcs-scaler
+  namespace: default  # You can use "default" or another namespace if preferred
+spec:
+  scaleTargetRef:
+    name: gcp-copy-files-app
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  cooldownPeriod: 300  # Time (in seconds) to wait before scaling down
+  pollingInterval: 30  # Interval (in seconds) to check the metric
+  triggers:
+  - type: gcp-storage
+    metadata:
+      bucketName: your-bucket-name
+      credentialsFromEnv: GOOGLE_APPLICATION_CREDENTIALS
+      targetObjectCount: "5"  # Scale up when object count exceeds 5
+      activationTargetObjectCount: "2"  # Start scaling when there are at least 2 files
+      bucketPrefix: "source/"  # Monitor files specifically in the "source/" folder
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcp-copy-files-app
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: gcp-copy-files-app
+  template:
+    metadata:
+      labels:
+        app: gcp-copy-files-app
+    spec:
+      containers:
+      - name: copy-files
+        image: your-docker-repo/copy-files:latest
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/secrets/service-account.json
+        - name: SOURCE_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: gcs-secrets
+              key: SOURCE_BUCKET
+        - name: DESTINATION_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: gcs-secrets
+              key: DESTINATION_BUCKET
+        volumeMounts:
+        - name: google-credentials
+          mountPath: /etc/secrets
+          readOnly: true
+      volumes:
+      - name: google-credentials
+        secret:
+          secretName: gcs-secrets
+

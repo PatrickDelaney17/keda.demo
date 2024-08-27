@@ -16,7 +16,10 @@ helm repo update
 
 ### Install KEDA:
 ```
-helm install keda kedacore/keda --namespace keda --create-namespace
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda --namespace default
+
 ```
 
 ### Verify Installation: Check that the KEDA components are running:
@@ -24,6 +27,8 @@ helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 kubectl get pods -n keda
 ```
+
+## Set up - Azure
 
 ### Create or modify your python app
 
@@ -163,10 +168,100 @@ spec:
 ```
 
 
-
 ### You can monitor the scaling behavior with:
 ```sh
 kubectl get hpa
 kubectl get pods
 
 ```
+
+## Set Up - GCP 
+
+### install dependencies
+```bash
+pip install google-cloud-storage python-dotenv
+```
+
+### create python app
+> creaet .env as well...
+```python
+import os
+from google.cloud import storage
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Set environment variables
+source_bucket_name = os.getenv("SOURCE_BUCKET")
+destination_bucket_name = os.getenv("DESTINATION_BUCKET")
+lease_duration = int(os.getenv("LEASE_DURATION_MINUTES", 10))  # Default lease duration is 10 minutes
+
+def move_files():
+    # Initialize Google Cloud Storage client
+    storage_client = storage.Client()
+
+    # Get source and destination buckets
+    source_bucket = storage_client.bucket(source_bucket_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # List files in the source bucket
+    blobs = source_bucket.list_blobs()
+
+    for blob in blobs:
+        # Check if the file is already being processed by checking its metadata
+        metadata = blob.metadata or {}
+        lease_expiration = metadata.get("lease_expiration")
+
+        if lease_expiration:
+            lease_expiration_time = datetime.strptime(lease_expiration, "%Y-%m-%dT%H:%M:%S")
+            if lease_expiration_time > datetime.utcnow():
+                print(f"Skipping {blob.name}, currently leased until {lease_expiration_time}.")
+                continue  # Skip this file if it's currently leased
+
+        # Lease the file by setting a "lease_expiration" metadata tag
+        lease_expiration_time = datetime.utcnow() + timedelta(minutes=lease_duration)
+        blob.metadata = blob.metadata or {}
+        blob.metadata["lease_expiration"] = lease_expiration_time.strftime("%Y-%m-%dT%H:%M:%S")
+        blob.patch()  # Update the blob with the new metadata
+
+        print(f"Leased {blob.name} for processing until {lease_expiration_time}.")
+
+        try:
+            # Process the file (copy to the destination bucket)
+            source_blob = source_bucket.blob(blob.name)
+            destination_blob = destination_bucket.blob(blob.name)
+
+            destination_blob.rewrite(source_blob)
+            print(f"Moved {blob.name} from {source_bucket_name} to {destination_bucket_name}.")
+
+            # After processing, delete the file from the source bucket
+            source_blob.delete()
+
+        except Exception as e:
+            # If an error occurs, release the lease by removing the metadata
+            blob.metadata.pop("lease_expiration", None)
+            blob.patch()
+            print(f"Error processing {blob.name}: {e}. Lease released.")
+
+        else:
+            # If successful, lease is no longer needed
+            print(f"Finished processing {blob.name}. File removed from source bucket.")
+
+if __name__ == "__main__":
+    move_files()
+
+
+```
+
+### KEDA Setup for Google Cloud Storage
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install prometheus prometheus-community/kube-prometheus-stack
+
+```
+
+### KEDA Configuration Using the Prometheus Trigger: Once the exporter is set up, you can configure KEDA to scale based on the object count.
+> See deploy [yaml file](deploy\gcp-scaler-deploy.yaml) for example details
